@@ -4,6 +4,7 @@ import {
     StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform
 } from 'react-native';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/api';
 
 export default function LoginScreen({ navigation }) {
@@ -12,8 +13,8 @@ export default function LoginScreen({ navigation }) {
     const [cargando, setCargando] = useState(false);
 
     async function handleLogin() {
-        if (!email || !password) {
-            Alert.alert('Error', 'Completa todos los campos');
+        if (!email.trim() || !password.trim()) {
+            Alert.alert('Campos vacíos', 'Escribe tu email y contraseña');
             return;
         }
 
@@ -24,11 +25,14 @@ export default function LoginScreen({ navigation }) {
                 password: password
             });
 
-            // Login exitoso — navegamos al Home
+            // Guardar usuario y token en el dispositivo
+            await AsyncStorage.setItem('forja_usuario', JSON.stringify(respuesta.data.usuario));
+            await AsyncStorage.setItem('forja_token', respuesta.data.usuario.token);
+
             navigation.replace('Home', { usuario: respuesta.data.usuario });
 
         } catch (error) {
-            const mensaje = error.response?.data?.error || 'Error al conectar con el servidor';
+            const mensaje = error.response?.data?.error || 'No se pudo conectar al servidor.\nVerifica tu WiFi.';
             Alert.alert('Error', mensaje);
         } finally {
             setCargando(false);
@@ -42,19 +46,17 @@ export default function LoginScreen({ navigation }) {
         >
             <View style={estilos.inner}>
 
-                {/* Logo / Título */}
                 <View style={estilos.encabezado}>
                     <Text style={estilos.logo}>FORJA</Text>
                     <Text style={estilos.subtitulo}>Tu entrenador inteligente</Text>
                 </View>
 
-                {/* Formulario */}
                 <View style={estilos.formulario}>
                     <Text style={estilos.etiqueta}>Email</Text>
                     <TextInput
                         style={estilos.input}
                         placeholder="tu@email.com"
-                        placeholderTextColor="#666"
+                        placeholderTextColor="#555"
                         keyboardType="email-address"
                         autoCapitalize="none"
                         value={email}
@@ -65,7 +67,7 @@ export default function LoginScreen({ navigation }) {
                     <TextInput
                         style={estilos.input}
                         placeholder="••••••••"
-                        placeholderTextColor="#666"
+                        placeholderTextColor="#555"
                         secureTextEntry
                         value={password}
                         onChangeText={setPassword}
@@ -87,7 +89,8 @@ export default function LoginScreen({ navigation }) {
                         onPress={() => navigation.navigate('Registro')}
                     >
                         <Text style={estilos.linkTexto}>
-                            ¿No tienes cuenta? <Text style={estilos.linkDestacado}>Regístrate</Text>
+                            ¿No tienes cuenta?{'  '}
+                            <Text style={estilos.linkDestacado}>Regístrate</Text>
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -119,7 +122,7 @@ const estilos = StyleSheet.create({
     },
     subtitulo: {
         fontSize: 14,
-        color: '#888',
+        color: '#666',
         marginTop: 6,
         letterSpacing: 2,
     },
@@ -127,7 +130,7 @@ const estilos = StyleSheet.create({
         width: '100%',
     },
     etiqueta: {
-        color: '#ccc',
+        color: '#aaa',
         fontSize: 13,
         marginBottom: 8,
         marginTop: 16,
@@ -160,10 +163,10 @@ const estilos = StyleSheet.create({
     },
     linkRegistro: {
         alignItems: 'center',
-        marginTop: 20,
+        marginTop: 24,
     },
     linkTexto: {
-        color: '#888',
+        color: '#666',
         fontSize: 14,
     },
     linkDestacado: {
