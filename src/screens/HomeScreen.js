@@ -71,8 +71,10 @@ export default function HomeScreen({ route, navigation }) {
         key={index}
         style={estilos.gridItem}
         onPress={() => {
-            if (item.titulo === 'Check-in') navigation.navigate('Bascula');
-        }}
+    if (item.titulo === 'Check-in') navigation.navigate('Bascula');
+    if (item.titulo === 'Progreso') navigation.navigate('Progreso');
+    if (item.titulo === 'Mi Rutina') navigation.navigate('Rutina');
+}}funciona
     >
         <Text style={estilos.gridIcono}>{item.icono}</Text>
         <Text style={estilos.gridTitulo}>{item.titulo}</Text>
