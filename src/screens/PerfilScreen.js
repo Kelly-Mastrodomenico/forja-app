@@ -21,6 +21,8 @@ export default function PerfilScreen({ navigation }) {
     const [nivel, setNivel] = useState('');
     const [tieneCiclo, setTieneCiclo] = useState(false);
     const [duracionCiclo, setDuracionCiclo] = useState('28');
+    const [pesoObjetivo, setPesoObjetivo] = useState('');
+const [grasaObjetivo, setGrasaObjetivo] = useState('');
     const [patologias, setPatologias] = useState(['ninguna']);
 
     useFocusEffect(
@@ -45,6 +47,8 @@ export default function PerfilScreen({ navigation }) {
             setNivel(datos.nivel || '');
             setTieneCiclo(datos.tiene_ciclo == 1);
             setDuracionCiclo(String(datos.duracion_ciclo || '28'));
+            setPesoObjetivo(String(datos.peso_objetivo || ''));
+setGrasaObjetivo(String(datos.grasa_objetivo || ''));
             setPatologias(datos.patologias || ['ninguna']);
         } catch (error) {
             Alert.alert('Error', 'No se pudo cargar el perfil');
@@ -65,6 +69,8 @@ export default function PerfilScreen({ navigation }) {
                 nombre: nombre.trim(),
                 altura_cm: parseFloat(alturaCm),
                 objetivo,
+                peso_objetivo: pesoObjetivo ? parseFloat(pesoObjetivo) : null,
+grasa_objetivo: grasaObjetivo ? parseFloat(grasaObjetivo) : null,
                 dias_entrenamiento: parseInt(diasEntrenamiento),
                 nivel,
                 tiene_ciclo: tieneCiclo,
@@ -201,6 +207,8 @@ export default function PerfilScreen({ navigation }) {
                             { etiqueta: 'Objetivo', valor: objetivoTexto[perfil?.objetivo] },
                             { etiqueta: 'Nivel', valor: perfil?.nivel },
                             { etiqueta: 'Altura', valor: `${perfil?.altura_cm} cm` },
+                            { etiqueta: 'Peso objetivo', valor: perfil?.peso_objetivo ? `${perfil.peso_objetivo} kg` : 'No definido' },
+{ etiqueta: 'Grasa objetivo', valor: perfil?.grasa_objetivo ? `${perfil.grasa_objetivo}%` : 'No definido' },
                             { etiqueta: 'Días de entrenamiento', valor: `${perfil?.dias_entrenamiento} días/semana` },
                             { etiqueta: 'Ciclo menstrual', valor: perfil?.tiene_ciclo == 1 ? `Sí (${perfil?.duracion_ciclo} días)` : 'No' },
                             { etiqueta: 'Condiciones', valor: (perfil?.patologias || []).join(', ') },
@@ -223,6 +231,26 @@ export default function PerfilScreen({ navigation }) {
                         <Text style={estilos.etiqueta}>Altura (cm)</Text>
                         <TextInput style={estilos.input} value={alturaCm}
                             onChangeText={setAlturaCm} keyboardType="numeric" placeholderTextColor="#555" />
+
+                        <Text style={estilos.etiqueta}>Peso objetivo (kg)</Text>
+<TextInput
+    style={estilos.input}
+    value={pesoObjetivo}
+    onChangeText={setPesoObjetivo}
+    keyboardType="numeric"
+    placeholder="Ej: 52"
+    placeholderTextColor="#555"
+/>
+
+<Text style={estilos.etiqueta}>% Grasa objetivo</Text>
+<TextInput
+    style={estilos.input}
+    value={grasaObjetivo}
+    onChangeText={setGrasaObjetivo}
+    keyboardType="numeric"
+    placeholder="Ej: 18"
+    placeholderTextColor="#555"
+/>
 
                         <Text style={estilos.etiqueta}>Objetivo</Text>
                         <View style={estilos.opciones}>
@@ -274,18 +302,22 @@ export default function PerfilScreen({ navigation }) {
                         <Text style={estilos.etiqueta}>Condiciones de salud</Text>
                         <View style={estilos.opciones}>
                             {[
-                                { valor: 'ninguna', texto: 'Ninguna' },
-                                { valor: 'sop', texto: 'SOP' },
-                                { valor: 'hipotiroidismo', texto: 'Hipotiroidismo' },
-                                { valor: 'resistencia_insulina', texto: 'Res. Insulina' },
-                                { valor: 'endometriosis', texto: 'Endometriosis' },
-                                { valor: 'diabetes_tipo2', texto: 'Diabetes t2' },
-                            ].map(op => (
-                                <Opcion key={op.valor}
-                                    seleccionado={patologias.includes(op.valor)}
-                                    onPress={() => togglePatologia(op.valor)}
-                                    texto={op.texto} />
-                            ))}
+    { valor: 'ninguna', texto: 'Ninguna' },
+    { valor: 'sop', texto: 'SOP' },
+    { valor: 'hipotiroidismo', texto: 'Hipotiroidismo' },
+    { valor: 'resistencia_insulina', texto: 'Res. Insulina' },
+    { valor: 'endometriosis', texto: 'Endometriosis' },
+    { valor: 'diabetes_tipo2', texto: 'Diabetes t2' },
+    { valor: 'dolor_rodilla', texto: '🦵 Dolor rodilla' },
+    { valor: 'dolor_lumbar', texto: '🔙 Dolor lumbar' },
+    { valor: 'lesion_hombro', texto: '💪 Lesión hombro' },
+    { valor: 'tendinitis', texto: '🩹 Tendinitis' },
+].map(op => (
+    <Opcion key={op.valor}
+        seleccionado={patologias.includes(op.valor)}
+        onPress={() => togglePatologia(op.valor)}
+        texto={op.texto} />
+))}
                         </View>
 
                         <TouchableOpacity
