@@ -37,6 +37,13 @@ export default function HomeScreen({ route, navigation }) {
             <Text style={estilos.objetivo}>Objetivo: {usuario?.objetivo?.replace('_', ' ') || ''}</Text>
             <Text style={estilos.nivel}>Nivel: {usuario?.nivel || ''}</Text>
 
+            <TouchableOpacity
+    style={estilos.botonRutina}
+    onPress={() => navigation.navigate('Rutina')}
+>
+    <Text style={estilos.botonRutinaTexto}>⚡ Ver mi rutina</Text>
+</TouchableOpacity>
+
             <TouchableOpacity style={estilos.botonSalir} onPress={handleCerrarSesion}>
                 <Text style={estilos.botonSalirTexto}>Cerrar sesión</Text>
             </TouchableOpacity>
@@ -89,4 +96,17 @@ const estilos = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
     },
+
+    botonRutina: {
+    backgroundColor: '#2563eb',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    marginTop: 24,
+},
+botonRutinaTexto: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+},
 });

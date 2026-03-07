@@ -117,7 +117,7 @@ export default function RegistroScreen({ navigation }) {
             }));
             await AsyncStorage.setItem('forja_token', respuesta.data.token);
 
-            navigation.replace('Home', {
+            navigation.replace('Main', {
                 usuario: {
                     id: respuesta.data.usuario_id,
                     nombre: nombre.trim(),

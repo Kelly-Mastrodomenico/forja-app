@@ -29,7 +29,7 @@ export default function LoginScreen({ navigation }) {
             await AsyncStorage.setItem('forja_usuario', JSON.stringify(respuesta.data.usuario));
             await AsyncStorage.setItem('forja_token', respuesta.data.usuario.token);
 
-            navigation.replace('Home', { usuario: respuesta.data.usuario });
+            navigation.replace('Main', { usuario: respuesta.data.usuario });
 
         } catch (error) {
             const mensaje = error.response?.data?.error || 'No se pudo conectar al servidor.\nVerifica tu WiFi.';

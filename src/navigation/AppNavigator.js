@@ -5,7 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from '../screens/LoginScreen';
 import RegistroScreen from '../screens/RegistroScreen';
-import HomeScreen from '../screens/HomeScreen';
+import TabNavigator from './TabNavigator';
 
 const Stack = createNativeStackNavigator();
 
@@ -41,8 +41,8 @@ export default function AppNavigator() {
         <NavigationContainer>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
                 <Stack.Screen
-                    name="Home"
-                    component={HomeScreen}
+                    name="Main"
+                    component={TabNavigator}
                     initialParams={{ usuario: usuarioGuardado || {} }}
                 />
                 <Stack.Screen name="Login" component={LoginScreen} />
