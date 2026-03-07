@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from '../screens/LoginScreen';
 import RegistroScreen from '../screens/RegistroScreen';
 import TabNavigator from './TabNavigator';
+import BasculaScreen from '../screens/BasculaScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -47,6 +48,7 @@ export default function AppNavigator() {
                 />
                 <Stack.Screen name="Login" component={LoginScreen} />
                 <Stack.Screen name="Registro" component={RegistroScreen} />
+                <Stack.Screen name="Bascula" component={BasculaScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );
