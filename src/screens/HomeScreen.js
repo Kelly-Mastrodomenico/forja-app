@@ -3,7 +3,7 @@ import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     ActivityIndicator, Image, Dimensions
 } from 'react-native';
-import Svg, { Ellipse, Path, Circle, G } from 'react-native-svg';
+import Svg, { Ellipse, Path, Circle } from 'react-native-svg';
 import { useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -26,85 +26,53 @@ const ROJO    = '#ef4444';
 const ROSA    = '#f472b6';
 
 // ─── Heatmap muscular SVG ─────────────────────────────────────────────────────
-// Figura humana simplificada con zonas coloreables por fatiga
-
 function HeatmapMuscular({ gruposFatiga = [], gruposListos = [] }) {
-    // Determinar color de cada zona
     function colorZona(zona) {
         const z = zona.toLowerCase();
-        if (gruposFatiga.some(g => g.toLowerCase().includes(z) || z.includes(g.toLowerCase()))) {
-            return NARANJA;
-        }
-        if (gruposListos.some(g => g.toLowerCase().includes(z) || z.includes(g.toLowerCase()))) {
-            return AZUL;
-        }
+        if (gruposFatiga.some(g => g.toLowerCase().includes(z) || z.includes(g.toLowerCase()))) return NARANJA;
+        if (gruposListos.some(g => g.toLowerCase().includes(z) || z.includes(g.toLowerCase()))) return AZUL;
         return '#2a2a2a';
     }
-
-    const opacFatiga = (zona) => colorZona(zona) === NARANJA ? 0.85 : colorZona(zona) === AZUL ? 0.6 : 0.3;
+    function opac(zona) {
+        const c = colorZona(zona);
+        return c === NARANJA ? 0.85 : c === AZUL ? 0.6 : 0.3;
+    }
 
     return (
         <View style={estilos.heatmapContenedor}>
             <Svg width="100%" height={280} viewBox="0 0 200 320">
-                {/* Cuerpo base — silueta */}
                 {/* Cabeza */}
                 <Ellipse cx="100" cy="28" rx="22" ry="26" fill="#2e2e2e" />
-
                 {/* Cuello */}
                 <Path d="M90 52 Q100 48 110 52 L108 68 Q100 64 92 68 Z" fill="#2e2e2e" />
-
                 {/* Hombros */}
-                <Ellipse cx="70" cy="80" rx="18" ry="12" fill={colorZona('hombro')} opacity={opacFatiga('hombro')} />
-                <Ellipse cx="130" cy="80" rx="18" ry="12" fill={colorZona('hombro')} opacity={opacFatiga('hombro')} />
-
+                <Ellipse cx="70"  cy="80" rx="18" ry="12" fill={colorZona('hombro')} opacity={opac('hombro')} />
+                <Ellipse cx="130" cy="80" rx="18" ry="12" fill={colorZona('hombro')} opacity={opac('hombro')} />
                 {/* Pecho */}
-                <Path d="M82 68 Q100 62 118 68 L120 100 Q100 108 80 100 Z"
-                    fill={colorZona('pecho')} opacity={opacFatiga('pecho')} />
-
+                <Path d="M82 68 Q100 62 118 68 L120 100 Q100 108 80 100 Z" fill={colorZona('pecho')} opacity={opac('pecho')} />
                 {/* Abdomen */}
-                <Path d="M83 100 Q100 108 117 100 L115 145 Q100 150 85 145 Z"
-                    fill={colorZona('abdomen')} opacity={opacFatiga('abdomen')} />
-
+                <Path d="M83 100 Q100 108 117 100 L115 145 Q100 150 85 145 Z" fill={colorZona('abdomen')} opacity={opac('abdomen')} />
                 {/* Brazos superiores */}
-                <Path d="M62 74 Q52 78 48 100 Q50 112 60 114 Q68 110 72 96 Z"
-                    fill={colorZona('biceps')} opacity={opacFatiga('biceps')} />
-                <Path d="M138 74 Q148 78 152 100 Q150 112 140 114 Q132 110 128 96 Z"
-                    fill={colorZona('biceps')} opacity={opacFatiga('biceps')} />
-
+                <Path d="M62 74 Q52 78 48 100 Q50 112 60 114 Q68 110 72 96 Z"   fill={colorZona('biceps')} opacity={opac('biceps')} />
+                <Path d="M138 74 Q148 78 152 100 Q150 112 140 114 Q132 110 128 96 Z" fill={colorZona('biceps')} opacity={opac('biceps')} />
                 {/* Antebrazos */}
-                <Path d="M48 100 Q42 118 44 138 Q50 142 56 138 Q60 118 60 114 Z"
-                    fill="#2a2a2a" opacity={0.5} />
-                <Path d="M152 100 Q158 118 156 138 Q150 142 144 138 Q140 118 140 114 Z"
-                    fill="#2a2a2a" opacity={0.5} />
-
+                <Path d="M48 100 Q42 118 44 138 Q50 142 56 138 Q60 118 60 114 Z"     fill="#2a2a2a" opacity={0.5} />
+                <Path d="M152 100 Q158 118 156 138 Q150 142 144 138 Q140 118 140 114 Z" fill="#2a2a2a" opacity={0.5} />
                 {/* Manos */}
-                <Ellipse cx="46" cy="145" rx="8" ry="10" fill="#2a2a2a" opacity={0.4} />
+                <Ellipse cx="46"  cy="145" rx="8" ry="10" fill="#2a2a2a" opacity={0.4} />
                 <Ellipse cx="154" cy="145" rx="8" ry="10" fill="#2a2a2a" opacity={0.4} />
-
-                {/* Espalda baja / lumbar */}
-                <Path d="M85 145 Q100 150 115 145 L113 168 Q100 172 87 168 Z"
-                    fill={colorZona('espalda')} opacity={opacFatiga('espalda') * 0.7} />
-
+                {/* Espalda baja */}
+                <Path d="M85 145 Q100 150 115 145 L113 168 Q100 172 87 168 Z" fill={colorZona('espalda')} opacity={opac('espalda') * 0.7} />
                 {/* Glúteos */}
-                <Path d="M87 168 Q100 172 113 168 L115 195 Q100 202 85 195 Z"
-                    fill={colorZona('gluteo')} opacity={opacFatiga('gluteo')} />
-
-                {/* Cuádriceps izquierdo */}
-                <Path d="M88 195 Q82 198 78 225 Q80 240 88 242 Q96 240 96 215 Z"
-                    fill={colorZona('piernas')} opacity={opacFatiga('piernas')} />
-
-                {/* Cuádriceps derecho */}
-                <Path d="M112 195 Q118 198 122 225 Q120 240 112 242 Q104 240 104 215 Z"
-                    fill={colorZona('piernas')} opacity={opacFatiga('piernas')} />
-
-                {/* Isquiotibiales izq (más oscuro, detrás) */}
-                <Path d="M88 242 Q84 260 86 278 Q92 282 96 278 Q100 262 96 242 Z"
-                    fill={colorZona('isquiotibiales')} opacity={opacFatiga('isquiotibiales') * 0.8} />
-                <Path d="M112 242 Q116 260 114 278 Q108 282 104 278 Q100 262 104 242 Z"
-                    fill={colorZona('isquiotibiales')} opacity={opacFatiga('isquiotibiales') * 0.8} />
-
+                <Path d="M87 168 Q100 172 113 168 L115 195 Q100 202 85 195 Z" fill={colorZona('gluteo')} opacity={opac('gluteo')} />
+                {/* Cuádriceps */}
+                <Path d="M88 195 Q82 198 78 225 Q80 240 88 242 Q96 240 96 215 Z"   fill={colorZona('piernas')} opacity={opac('piernas')} />
+                <Path d="M112 195 Q118 198 122 225 Q120 240 112 242 Q104 240 104 215 Z" fill={colorZona('piernas')} opacity={opac('piernas')} />
+                {/* Isquiotibiales */}
+                <Path d="M88 242 Q84 260 86 278 Q92 282 96 278 Q100 262 96 242 Z"    fill={colorZona('isquiotibiales')} opacity={opac('isquiotibiales') * 0.8} />
+                <Path d="M112 242 Q116 260 114 278 Q108 282 104 278 Q100 262 104 242 Z" fill={colorZona('isquiotibiales')} opacity={opac('isquiotibiales') * 0.8} />
                 {/* Gemelos */}
-                <Ellipse cx="90" cy="298" rx="7" ry="14" fill="#2a2a2a" opacity={0.5} />
+                <Ellipse cx="90"  cy="298" rx="7" ry="14" fill="#2a2a2a" opacity={0.5} />
                 <Ellipse cx="110" cy="298" rx="7" ry="14" fill="#2a2a2a" opacity={0.5} />
             </Svg>
 

@@ -1,392 +1,450 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    TextInput, ActivityIndicator, Alert, KeyboardAvoidingView,
-    Platform, Animated
+    ActivityIndicator, Alert, Image, Animated
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/api';
 
-export default function RegisterScreen({ navigation }) {
-    const [nombre, setNombre]           = useState('');
-    const [email, setEmail]             = useState('');
-    const [password, setPassword]       = useState('');
-    const [sexo, setSexo]               = useState(null); // 'hombre' | 'mujer'
-    const [fechaCiclo, setFechaCiclo]   = useState('');
-    const [cargando, setCargando]       = useState(false);
+// Imágenes de ejercicios desde ExerciseDB (API pública sin key)
+const IMAGENES_EJERCICIOS = {
+    'sentadilla': 'https://api.exercisedb.io/image/eGWNaGPXtH3OSM',
+    'squat': 'https://api.exercisedb.io/image/eGWNaGPXtH3OSM',
+    'press banca': 'https://api.exercisedb.io/image/KnBRnpcJJ5KZLT',
+    'bench press': 'https://api.exercisedb.io/image/KnBRnpcJJ5KZLT',
+    'peso muerto': 'https://api.exercisedb.io/image/eQ5sGlLfMHZ7SV',
+    'deadlift': 'https://api.exercisedb.io/image/eQ5sGlLfMHZ7SV',
+    'dominadas': 'https://api.exercisedb.io/image/uXjDQL9pjHjmGX',
+    'pull up': 'https://api.exercisedb.io/image/uXjDQL9pjHjmGX',
+    'remo': 'https://api.exercisedb.io/image/5sWXMBEfaHqbLd',
+    'plancha': 'https://api.exercisedb.io/image/XvJtbmNoNH6bYZ',
+    'plank': 'https://api.exercisedb.io/image/XvJtbmNoNH6bYZ',
+    'hip thrust': 'https://api.exercisedb.io/image/TA3SxxQWkgGkPv',
+    'zancadas': 'https://api.exercisedb.io/image/G8xmNBqyJqYGZr',
+    'lunges': 'https://api.exercisedb.io/image/G8xmNBqyJqYGZr',
+    'curl biceps': 'https://api.exercisedb.io/image/u3VkKMYmkH7fXb',
+    'bicep curl': 'https://api.exercisedb.io/image/u3VkKMYmkH7fXb',
+    'press hombros': 'https://api.exercisedb.io/image/oEoIhJPpvHoopO',
+    'shoulder press': 'https://api.exercisedb.io/image/oEoIhJPpvHoopO',
+    'triceps': 'https://api.exercisedb.io/image/HnolHONNHHm6Kv',
+    'leg press': 'https://api.exercisedb.io/image/2DVmhIHBfbhOqS',
+    'extensión cuádriceps': 'https://api.exercisedb.io/image/2DVmhIHBfbhOqS',
+};
 
-    async function registrar() {
-        if (!nombre.trim() || !email.trim() || !password.trim()) {
-            Alert.alert('Campos requeridos', 'Completa nombre, correo y contraseña.');
-            return;
-        }
-        if (!sexo) {
-            Alert.alert('Selector requerido', 'Selecciona tu biología para personalizar tu plan.');
-            return;
-        }
-        if (password.length < 6) {
-            Alert.alert('Contraseña débil', 'Mínimo 6 caracteres.');
-            return;
-        }
+function obtenerImagenEjercicio(nombreEjercicio) {
+    const nombre = nombreEjercicio.toLowerCase();
+    for (const [clave, url] of Object.entries(IMAGENES_EJERCICIOS)) {
+        if (nombre.includes(clave)) return url;
+    }
+    return null;
+}
 
+function parsearRutina(textoRutina) {
+    const dias = [];
+    const seccionesDia = textoRutina.split(/\*\*día\s+\d+[:\s]/gi).filter(s => s.trim());
+    const encabezadosDia = textoRutina.match(/\*\*día\s+\d+[:\s][^\*]*/gi) || [];
+
+    seccionesDia.forEach((seccion, i) => {
+        const tituloDia = encabezadosDia[i]
+            ? encabezadosDia[i].replace(/\*\*/g, '').trim()
+            : `Día ${i + 1}`;
+
+        const lineas = seccion.split('\n').filter(l => l.trim());
+        const ejercicios = [];
+
+        lineas.forEach(linea => {
+            const lineaLimpia = linea.replace(/\*\*/g, '').replace(/^[-•*]\s*/, '').trim();
+            if (!lineaLimpia || lineaLimpia.length < 5) return;
+
+            // Detectar patrones como "Sentadilla: 4x8-10, descanso 60s"
+            const matchEjercicio = lineaLimpia.match(/^(.+?)[\s:]+(\d+)\s*[x×]\s*([\d\-]+(?:\s*(?:reps|rep|repeticiones))?)/i);
+
+            if (matchEjercicio) {
+                ejercicios.push({
+                    nombre: matchEjercicio[1].trim(),
+                    series: matchEjercicio[2],
+                    reps: matchEjercicio[3].replace(/\s*(reps|rep|repeticiones)/i, ''),
+                    descanso: extraerDescanso(lineaLimpia),
+                    completado: false,
+                    imagen: obtenerImagenEjercicio(matchEjercicio[1]),
+                    descripcion: extraerDescripcion(lineaLimpia),
+                });
+            } else if (!lineaLimpia.toLowerCase().includes('descanso') &&
+                       !lineaLimpia.toLowerCase().includes('minutos') &&
+                       ejercicios.length > 0 &&
+                       lineaLimpia.length > 10) {
+                // Agregar como nota al último ejercicio
+                ejercicios[ejercicios.length - 1].descripcion = lineaLimpia;
+            }
+        });
+
+        if (ejercicios.length > 0) {
+            dias.push({ titulo: tituloDia, ejercicios });
+        }
+    });
+
+    return dias;
+}
+
+function extraerDescanso(linea) {
+    const match = linea.match(/descanso[:\s]+(\d+\s*(?:s|seg|segundos|min|minutos))/i);
+    return match ? match[1] : null;
+}
+
+function extraerDescripcion(linea) {
+    const partes = linea.split(/[,;]/);
+    if (partes.length > 1) {
+        return partes.slice(1).join(',').replace(/descanso.*/i, '').trim();
+    }
+    return null;
+}
+
+export default function RutinaScreen() {
+    const [vistaActiva, setVistaActiva] = useState('diaria');
+    const [rutina, setRutina] = useState('');
+    const [diasParsados, setDiasParsados] = useState([]);
+    const [diaActivo, setDiaActivo] = useState(0);
+    const [cargando, setCargando] = useState(false);
+    const [ejerciciosCompletados, setEjerciciosCompletados] = useState({});
+    const [guardandoEjercicio, setGuardandoEjercicio] = useState(null);
+
+    useFocusEffect(
+        useCallback(() => {
+            cargarRutinaGuardada();
+        }, [])
+    );
+
+    async function cargarRutinaGuardada() {
+        try {
+            const rutinaGuardada = await AsyncStorage.getItem('forja_rutina');
+            const completadosGuardados = await AsyncStorage.getItem('forja_completados_hoy');
+            if (rutinaGuardada) {
+                setRutina(rutinaGuardada);
+                const dias = parsearRutina(rutinaGuardada);
+                setDiasParsados(dias);
+            }
+            if (completadosGuardados) {
+                setEjerciciosCompletados(JSON.parse(completadosGuardados));
+            }
+        } catch (error) {
+            console.log('Sin rutina guardada');
+        }
+    }
+
+    async function generarRutina() {
         setCargando(true);
         try {
-            const body = {
-                nombre:              nombre.trim(),
-                email:               email.trim().toLowerCase(),
-                password,
-                sexo,
-                tiene_ciclo:         sexo === 'mujer',
-                fecha_ultimo_ciclo:  (sexo === 'mujer' && fechaCiclo.trim()) ? fechaCiclo.trim() : null,
-            };
-
-            const resp = await axios.post(`${API_URL}/auth/registro.php`, body);
-
-            if (resp.data?.token) {
-                // Guardar token y navegar al perfil para completar datos
-                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-                await AsyncStorage.setItem('forja_token', resp.data.token);
-                await AsyncStorage.setItem('forja_usuario_id', String(resp.data.usuario_id));
-                navigation.replace('CompletarPerfil');
-            } else {
-                Alert.alert('Error', resp.data?.error || 'No se pudo registrar.');
-            }
-        } catch (e) {
-            const msg = e.response?.data?.error || 'Error de conexión. Verifica tu red.';
-            Alert.alert('Error', msg);
+            const token = await AsyncStorage.getItem('forja_token');
+            const respuesta = await axios.post(
+                `${API_URL}/ia/generar-rutina.php`,
+                { tipo: vistaActiva },
+                { headers: { Authorization: `Bearer ${token}` }, timeout: 60000 }
+            );
+            const textoRutina = respuesta.data.rutina || respuesta.data.respuesta || '';
+            setRutina(textoRutina);
+            await AsyncStorage.setItem('forja_rutina', textoRutina);
+            // Resetear completados al generar nueva rutina
+            setEjerciciosCompletados({});
+            await AsyncStorage.removeItem('forja_completados_hoy');
+            const dias = parsearRutina(textoRutina);
+            setDiasParsados(dias);
+            setDiaActivo(0);
+        } catch (error) {
+            Alert.alert('Error', 'No se pudo generar la rutina. Intenta de nuevo.');
         } finally {
             setCargando(false);
         }
     }
 
+    async function toggleEjercicio(nombreEjercicio, ejercicio) {
+        const clave = `${diaActivo}_${nombreEjercicio}`;
+        const nuevoEstado = !ejerciciosCompletados[clave];
+
+        const nuevosCompletados = { ...ejerciciosCompletados, [clave]: nuevoEstado };
+        setEjerciciosCompletados(nuevosCompletados);
+        await AsyncStorage.setItem('forja_completados_hoy', JSON.stringify(nuevosCompletados));
+
+        setGuardandoEjercicio(clave);
+        try {
+            const token = await AsyncStorage.getItem('forja_token');
+            const hoy = new Date().toISOString().split('T')[0];
+            await axios.post(
+                `${API_URL}/entreno/completar-ejercicio.php`,
+                {
+                    nombre_ejercicio: nombreEjercicio,
+                    series: ejercicio.series,
+                    repeticiones: ejercicio.reps,
+                    completado: nuevoEstado ? 1 : 0,
+                    fecha: hoy,
+                },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+        } catch (error) {
+            console.log('Error al guardar ejercicio:', error.message);
+        } finally {
+            setGuardandoEjercicio(null);
+        }
+    }
+
+    function contarCompletados(diaIndex) {
+        if (!diasParsados[diaIndex]) return { completados: 0, total: 0 };
+        const total = diasParsados[diaIndex].ejercicios.length;
+        const completados = diasParsados[diaIndex].ejercicios.filter((ej) => {
+            const clave = `${diaIndex}_${ej.nombre}`;
+            return ejerciciosCompletados[clave];
+        }).length;
+        return { completados, total };
+    }
+
+    const diaData = diasParsados[diaActivo];
+    const { completados, total } = contarCompletados(diaActivo);
+    const porcentaje = total > 0 ? Math.round((completados / total) * 100) : 0;
+
     return (
-        <KeyboardAvoidingView
-            style={estilos.flex}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-            <ScrollView
-                style={estilos.contenedor}
-                contentContainerStyle={estilos.scroll}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-            >
-                {/* ── LOGO ── */}
-                <View style={estilos.logoContenedor}>
-                    <View style={estilos.logoBox}>
-                        <Text style={estilos.logoIcono}>⚡</Text>
-                    </View>
+        <View style={estilos.contenedor}>
+            <View style={estilos.header}>
+                <Text style={estilos.headerTitulo}>Mi Rutina</Text>
+                <View style={estilos.selectorVista}>
+                    {['diaria', 'semanal'].map(v => (
+                        <TouchableOpacity
+                            key={v}
+                            style={[estilos.vistaBtn, vistaActiva === v && estilos.vistaBtnActivo]}
+                            onPress={() => setVistaActiva(v)}
+                        >
+                            <Text style={[estilos.vistaBtnTexto, vistaActiva === v && { color: '#fff' }]}>
+                                {v.charAt(0).toUpperCase() + v.slice(1)}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
                 </View>
+            </View>
 
-                {/* ── TÍTULO ── */}
-                <Text style={estilos.titulo}>
-                    Bienvenido a <Text style={estilos.tituloAcento}>FORJA</Text>
-                </Text>
-                <Text style={estilos.subtitulo}>
-                    Optimización biológica basada en{'\n'}ciencia de alto rendimiento.
-                </Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
 
-                {/* ── CAMPOS ── */}
-                <View style={estilos.camposContenedor}>
-
-                    <Text style={estilos.etiqueta}>NOMBRE COMPLETO</Text>
-                    <View style={estilos.inputContenedor}>
-                        <Text style={estilos.inputIcono}>👤</Text>
-                        <TextInput
-                            style={estilos.input}
-                            placeholder="Tu nombre"
-                            placeholderTextColor="#4a5568"
-                            value={nombre}
-                            onChangeText={setNombre}
-                            autoCapitalize="words"
-                        />
-                    </View>
-
-                    <Text style={estilos.etiqueta}>CORREO ELECTRÓNICO</Text>
-                    <View style={estilos.inputContenedor}>
-                        <Text style={estilos.inputIcono}>✉️</Text>
-                        <TextInput
-                            style={estilos.input}
-                            placeholder="ejemplo@forja.bio"
-                            placeholderTextColor="#4a5568"
-                            value={email}
-                            onChangeText={setEmail}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                        />
-                    </View>
-
-                    <Text style={estilos.etiqueta}>CONTRASEÑA SEGURA</Text>
-                    <View style={estilos.inputContenedor}>
-                        <Text style={estilos.inputIcono}>🔒</Text>
-                        <TextInput
-                            style={estilos.input}
-                            placeholder="••••••••"
-                            placeholderTextColor="#4a5568"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry
-                        />
-                    </View>
-                </View>
-
-                {/* ── SELECTOR DE BIOLOGÍA ── */}
-                <View style={estilos.selectorHeader}>
-                    <Text style={estilos.selectorTitulo}>SELECTOR DE BIOLOGÍA CRÍTICO</Text>
-                    <View style={estilos.requeridoBadge}>
-                        <Text style={estilos.requeridoTxt}>REQUERIDO</Text>
-                    </View>
-                </View>
-
-                <View style={estilos.selectorGrid}>
-                    {/* HOMBRE */}
-                    <TouchableOpacity
-                        style={[estilos.selectorCard, sexo === 'hombre' && estilos.selectorCardActivo]}
-                        onPress={() => setSexo('hombre')}
-                        activeOpacity={0.85}
-                    >
-                        {sexo === 'hombre' && (
-                            <View style={estilos.checkmark}>
-                                <Text style={estilos.checkmarkTxt}>✓</Text>
-                            </View>
-                        )}
-                        <View style={[estilos.selectorIconBox, sexo === 'hombre' && estilos.selectorIconBoxActivo]}>
-                            <Text style={estilos.selectorIcono}>⚡</Text>
-                        </View>
-                        <Text style={[estilos.selectorNombre, sexo === 'hombre' && estilos.selectorNombreActivo]}>
-                            Hombre
-                        </Text>
-                        <Text style={estilos.selectorSub}>Metabolismo Estable</Text>
-                    </TouchableOpacity>
-
-                    {/* MUJER */}
-                    <TouchableOpacity
-                        style={[estilos.selectorCard, sexo === 'mujer' && estilos.selectorCardActivoMujer]}
-                        onPress={() => setSexo('mujer')}
-                        activeOpacity={0.85}
-                    >
-                        {sexo === 'mujer' && (
-                            <View style={[estilos.checkmark, { backgroundColor: '#f472b6' }]}>
-                                <Text style={estilos.checkmarkTxt}>✓</Text>
-                            </View>
-                        )}
-                        <View style={[estilos.selectorIconBox, sexo === 'mujer' && estilos.selectorIconBoxActivoMujer]}>
-                            <Text style={estilos.selectorIcono}>⚡</Text>
-                        </View>
-                        <Text style={[estilos.selectorNombre, sexo === 'mujer' && estilos.selectorNombreActivoMujer]}>
-                            Mujer
-                        </Text>
-                        <Text style={estilos.selectorSub}>Ciclo Hormonal</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* ── CAMPO CICLO (solo mujer) ── */}
-                {sexo === 'mujer' && (
-                    <View style={estilos.cicloContenedor}>
-                        <View style={estilos.cicloHeader}>
-                            <Text style={estilos.cicloIcono}>🌙</Text>
-                            <Text style={estilos.cicloTitulo}>Optimización Hormonal</Text>
-                        </View>
-                        <Text style={estilos.cicloDesc}>
-                            Fecha de inicio de tu último ciclo (opcional). FORJA ajustará tu nutrición e intensidad según tu fase.
-                        </Text>
-                        <View style={[estilos.inputContenedor, estilos.cicloInput]}>
-                            <Text style={estilos.inputIcono}>📅</Text>
-                            <TextInput
-                                style={estilos.input}
-                                placeholder="AAAA-MM-DD  (ej: 2025-01-15)"
-                                placeholderTextColor="#4a5568"
-                                value={fechaCiclo}
-                                onChangeText={setFechaCiclo}
-                                keyboardType="numeric"
-                            />
-                        </View>
-                    </View>
-                )}
-
-                {/* ── BOTÓN PRINCIPAL ── */}
+                {/* Botón generar */}
                 <TouchableOpacity
-                    style={[estilos.botonPrincipal, cargando && estilos.botonDesactivado]}
-                    onPress={registrar}
+                    style={[estilos.botonGenerar, cargando && estilos.botonDesactivado]}
+                    onPress={generarRutina}
                     disabled={cargando}
-                    activeOpacity={0.9}
                 >
                     {cargando
-                        ? <ActivityIndicator color="#fff" size="small" />
-                        : <>
-                            <Text style={estilos.botonTxt}>Configurar Perfil Biológico</Text>
-                            <Text style={estilos.botonFlecha}>→</Text>
-                          </>
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text style={estilos.botonGenerarTexto}>
+                            {rutina ? '🔄 Regenerar con IA' : '✨ Generar rutina con IA'}
+                          </Text>
                     }
                 </TouchableOpacity>
 
-                {/* ── LINK LOGIN ── */}
-                <TouchableOpacity
-                    onPress={() => navigation.navigate('Login')}
-                    style={estilos.loginLink}
-                >
-                    <Text style={estilos.loginTxt}>
-                        ¿Ya tienes cuenta? <Text style={estilos.loginAcento}>Inicia Sesión</Text>
-                    </Text>
-                </TouchableOpacity>
+                {cargando && (
+                    <Text style={estilos.cargandoTexto}>La IA está creando tu rutina personalizada...</Text>
+                )}
 
-                {/* ── SEGURIDAD ── */}
-                <View style={estilos.seguridadRow}>
-                    <Text style={estilos.seguridadIcono}>🔒</Text>
-                    <Text style={estilos.seguridadTxt}>DATOS ENCRIPTADOS BAJO PROTOCOLOS BIOMÉDICOS</Text>
-                </View>
+                {/* Selector de días */}
+                {diasParsados.length > 0 && (
+                    <>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={estilos.diasScroll}
+                            contentContainerStyle={{ paddingHorizontal: 20 }}
+                        >
+                            {diasParsados.map((dia, i) => {
+                                const { completados: c, total: t } = contarCompletados(i);
+                                const completo = t > 0 && c === t;
+                                return (
+                                    <TouchableOpacity
+                                        key={i}
+                                        style={[estilos.diaBtn, diaActivo === i && estilos.diaBtnActivo, completo && estilos.diaBtnCompleto]}
+                                        onPress={() => setDiaActivo(i)}
+                                    >
+                                        <Text style={[estilos.diaBtnTexto, diaActivo === i && { color: '#fff' }]}>
+                                            {completo ? '✅' : `Día ${i + 1}`}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
 
-                <View style={{ height: 40 }} />
+                        {/* Título del día y progreso */}
+                        {diaData && (
+                            <View style={estilos.diaHeaderCard}>
+                                <View style={estilos.diaHeaderFila}>
+                                    <Text style={estilos.diaTitulo} numberOfLines={1}>
+                                        {diaData.titulo}
+                                    </Text>
+                                    <Text style={estilos.diaProgreso}>{completados}/{total}</Text>
+                                </View>
+                                <View style={estilos.barraFondo}>
+                                    <View style={[estilos.barraRelleno, { width: `${porcentaje}%` }]} />
+                                </View>
+                                {porcentaje === 100 && (
+                                    <Text style={estilos.entrenoCompleto}>🎉 ¡Entreno completado!</Text>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Lista de ejercicios */}
+                        {diaData?.ejercicios.map((ejercicio, i) => {
+                            const clave = `${diaActivo}_${ejercicio.nombre}`;
+                            const completado = !!ejerciciosCompletados[clave];
+                            const guardando = guardandoEjercicio === clave;
+
+                            return (
+                                <View key={i} style={[estilos.ejercicioCard, completado && estilos.ejercicioCardCompleto]}>
+                                    <View style={estilos.ejercicioContenido}>
+
+                                        {/* Imagen del ejercicio */}
+                                        {ejercicio.imagen && (
+                                            <Image
+                                                source={{ uri: ejercicio.imagen }}
+                                                style={estilos.ejercicioImagen}
+                                                resizeMode="cover"
+                                            />
+                                        )}
+                                        {!ejercicio.imagen && (
+                                            <View style={estilos.ejercicioImagenPlaceholder}>
+                                                <Text style={estilos.ejercicioImagenEmoji}>💪</Text>
+                                            </View>
+                                        )}
+
+                                        {/* Info */}
+                                        <View style={estilos.ejercicioInfo}>
+                                            <Text style={[estilos.ejercicioNombre, completado && estilos.textoTachado]} numberOfLines={2}>
+                                                {ejercicio.nombre}
+                                            </Text>
+                                            <View style={estilos.ejercicioStats}>
+                                                {ejercicio.series && (
+                                                    <View style={estilos.statChip}>
+                                                        <Text style={estilos.statValor}>{ejercicio.series}</Text>
+                                                        <Text style={estilos.statLabel}>series</Text>
+                                                    </View>
+                                                )}
+                                                {ejercicio.reps && (
+                                                    <View style={estilos.statChip}>
+                                                        <Text style={estilos.statValor}>{ejercicio.reps}</Text>
+                                                        <Text style={estilos.statLabel}>reps</Text>
+                                                    </View>
+                                                )}
+                                                {ejercicio.descanso && (
+                                                    <View style={[estilos.statChip, { backgroundColor: '#1e3a2e' }]}>
+                                                        <Text style={[estilos.statValor, { color: '#4ade80' }]}>⏱ {ejercicio.descanso}</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            {ejercicio.descripcion && (
+                                                <Text style={estilos.ejercicioDescripcion} numberOfLines={2}>
+                                                    {ejercicio.descripcion}
+                                                </Text>
+                                            )}
+                                        </View>
+
+                                        {/* Checkbox */}
+                                        <TouchableOpacity
+                                            style={[estilos.checkbox, completado && estilos.checkboxActivo]}
+                                            onPress={() => toggleEjercicio(ejercicio.nombre, ejercicio)}
+                                            disabled={guardando}
+                                        >
+                                            {guardando
+                                                ? <ActivityIndicator size="small" color="#fff" />
+                                                : <Text style={estilos.checkboxTexto}>{completado ? '✓' : ''}</Text>
+                                            }
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            );
+                        })}
+
+                        <View style={{ height: 40 }} />
+                    </>
+                )}
+
+                {/* Sin rutina */}
+                {!rutina && !cargando && (
+                    <View style={estilos.vacio}>
+                        <Text style={estilos.vacioIcono}>🏋️</Text>
+                        <Text style={estilos.vacioTitulo}>Sin rutina generada</Text>
+                        <Text style={estilos.vacioTexto}>
+                            Toca el botón de arriba y la IA creará una rutina personalizada según tu perfil
+                        </Text>
+                    </View>
+                )}
+
             </ScrollView>
-        </KeyboardAvoidingView>
+        </View>
     );
 }
 
-// ─── ESTILOS ──────────────────────────────────────────────────────────────────
-
-const AZUL    = '#3b82f6';
-const ROSA    = '#f472b6';
-const FONDO   = '#000000';
-const CARD    = '#111111';
-const CARD2   = '#1a1a1a';
-const BORDE   = '#2a2a2a';
-const TEXTO   = '#ffffff';
-const SUBTXT  = '#6b7280';
-
 const estilos = StyleSheet.create({
-    flex:       { flex: 1, backgroundColor: FONDO },
-    contenedor: { flex: 1, backgroundColor: FONDO },
-    scroll:     { paddingHorizontal: 24, paddingTop: 60 },
-
-    // Logo
-    logoContenedor: { alignItems: 'center', marginBottom: 20 },
-    logoBox: {
-        width: 72, height: 72, borderRadius: 20,
-        backgroundColor: '#1e1e1e',
-        justifyContent: 'center', alignItems: 'center',
-        borderWidth: 1, borderColor: BORDE,
-        shadowColor: AZUL, shadowOpacity: 0.3, shadowRadius: 20, elevation: 8,
+    contenedor: { flex: 1, backgroundColor: '#0a0a1a' },
+    header: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        paddingTop: 55, paddingBottom: 16, paddingHorizontal: 24,
+        borderBottomWidth: 1, borderBottomColor: '#1a1a2e',
     },
-    logoIcono: { fontSize: 32 },
-
-    // Título
-    titulo: {
-        color: TEXTO, fontSize: 28, fontWeight: '800',
-        textAlign: 'center', marginBottom: 8,
-    },
-    tituloAcento: { color: AZUL },
-    subtitulo: {
-        color: SUBTXT, fontSize: 14, textAlign: 'center',
-        lineHeight: 22, marginBottom: 32,
-    },
-
-    // Campos
-    camposContenedor: { marginBottom: 28 },
-    etiqueta: {
-        color: SUBTXT, fontSize: 11, fontWeight: '700',
-        letterSpacing: 1.2, marginBottom: 8, marginTop: 16,
-    },
-    inputContenedor: {
-        flexDirection: 'row', alignItems: 'center',
-        backgroundColor: CARD, borderRadius: 12,
-        borderWidth: 1, borderColor: BORDE,
-        paddingHorizontal: 14, paddingVertical: 14,
-    },
-    inputIcono: { fontSize: 16, marginRight: 10 },
-    input: {
-        flex: 1, color: TEXTO, fontSize: 15,
-    },
-
-    // Selector biología
-    selectorHeader: {
-        flexDirection: 'row', justifyContent: 'space-between',
-        alignItems: 'center', marginBottom: 14,
-    },
-    selectorTitulo: {
-        color: AZUL, fontSize: 11, fontWeight: '700', letterSpacing: 1,
-    },
-    requeridoBadge: {
-        backgroundColor: CARD2, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
-        borderWidth: 1, borderColor: BORDE,
-    },
-    requeridoTxt: { color: SUBTXT, fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
-
-    selectorGrid: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-
-    selectorCard: {
-        flex: 1, backgroundColor: CARD,
-        borderRadius: 16, borderWidth: 1.5, borderColor: BORDE,
-        paddingVertical: 22, paddingHorizontal: 16,
-        alignItems: 'center', position: 'relative',
-    },
-    selectorCardActivo: {
-        borderColor: AZUL, backgroundColor: '#0f1929',
-        shadowColor: AZUL, shadowOpacity: 0.25, shadowRadius: 12, elevation: 6,
-    },
-    selectorCardActivoMujer: {
-        borderColor: ROSA, backgroundColor: '#1f0f1a',
-        shadowColor: ROSA, shadowOpacity: 0.25, shadowRadius: 12, elevation: 6,
-    },
-
-    checkmark: {
-        position: 'absolute', top: 10, right: 10,
-        width: 20, height: 20, borderRadius: 10,
-        backgroundColor: AZUL, justifyContent: 'center', alignItems: 'center',
-    },
-    checkmarkTxt: { color: '#fff', fontSize: 11, fontWeight: '800' },
-
-    selectorIconBox: {
-        width: 52, height: 52, borderRadius: 26,
-        backgroundColor: CARD2,
-        justifyContent: 'center', alignItems: 'center',
-        marginBottom: 12, borderWidth: 1, borderColor: BORDE,
-    },
-    selectorIconBoxActivo:      { backgroundColor: '#1e3a5f', borderColor: AZUL },
-    selectorIconBoxActivoMujer: { backgroundColor: '#3d1a2e', borderColor: ROSA },
-    selectorIcono: { fontSize: 24 },
-
-    selectorNombre: {
-        color: TEXTO, fontSize: 17, fontWeight: '700', marginBottom: 4,
-    },
-    selectorNombreActivo:      { color: AZUL },
-    selectorNombreActivoMujer: { color: ROSA },
-    selectorSub: { color: SUBTXT, fontSize: 12, textAlign: 'center' },
-
-    // Campo ciclo menstrual
-    cicloContenedor: {
-        backgroundColor: '#1a0f1a', borderRadius: 14,
-        borderWidth: 1, borderColor: '#4a1a3a',
-        padding: 16, marginBottom: 24,
-    },
-    cicloHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-    cicloIcono:  { fontSize: 16, marginRight: 8 },
-    cicloTitulo: { color: ROSA, fontSize: 13, fontWeight: '700' },
-    cicloDesc: {
-        color: SUBTXT, fontSize: 12, lineHeight: 18, marginBottom: 12,
-    },
-    cicloInput: { backgroundColor: '#0f0a0f', borderColor: '#4a1a3a' },
-
-    // Botón principal
-    botonPrincipal: {
-        flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-        backgroundColor: AZUL, borderRadius: 14,
-        paddingVertical: 17, marginBottom: 16,
-        shadowColor: AZUL, shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+    headerTitulo: { color: '#fff', fontSize: 22, fontWeight: '800' },
+    selectorVista: { flexDirection: 'row', backgroundColor: '#1a1a2e', borderRadius: 20, padding: 3 },
+    vistaBtn: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 18 },
+    vistaBtnActivo: { backgroundColor: '#2563eb' },
+    vistaBtnTexto: { color: '#666', fontSize: 13, fontWeight: '600' },
+    botonGenerar: {
+        backgroundColor: '#2563eb', borderRadius: 14, margin: 20,
+        padding: 16, alignItems: 'center',
     },
     botonDesactivado: { opacity: 0.6 },
-    botonTxt:   { color: '#fff', fontSize: 16, fontWeight: '700', marginRight: 8 },
-    botonFlecha:{ color: '#fff', fontSize: 18, fontWeight: '300' },
-
-    // Links
-    loginLink:  { alignItems: 'center', marginBottom: 16 },
-    loginTxt:   { color: SUBTXT, fontSize: 14 },
-    loginAcento:{ color: TEXTO, fontWeight: '700', textDecorationLine: 'underline' },
-
-    // Seguridad
-    seguridadRow: {
-        flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6,
+    botonGenerarTexto: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    cargandoTexto: { color: '#555', textAlign: 'center', fontSize: 13, marginTop: -10, marginBottom: 16 },
+    diasScroll: { marginBottom: 16 },
+    diaBtn: {
+        borderWidth: 1, borderColor: '#2563eb40', borderRadius: 20,
+        paddingVertical: 8, paddingHorizontal: 16, marginRight: 8,
     },
-    seguridadIcono: { fontSize: 10 },
-    seguridadTxt: {
-        color: '#374151', fontSize: 9, fontWeight: '600', letterSpacing: 0.8,
+    diaBtnActivo: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+    diaBtnCompleto: { borderColor: '#16a34a' },
+    diaBtnTexto: { color: '#666', fontSize: 13, fontWeight: '600' },
+    diaHeaderCard: {
+        backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 20,
+        marginBottom: 16, padding: 16, borderWidth: 1, borderColor: '#2563eb20',
     },
+    diaHeaderFila: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+    diaTitulo: { color: '#fff', fontSize: 15, fontWeight: '700', flex: 1, marginRight: 10 },
+    diaProgreso: { color: '#2563eb', fontSize: 14, fontWeight: '700' },
+    barraFondo: { height: 6, backgroundColor: '#0a0a1a', borderRadius: 3, overflow: 'hidden' },
+    barraRelleno: { height: 6, backgroundColor: '#2563eb', borderRadius: 3 },
+    entrenoCompleto: { color: '#4ade80', fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: 10 },
+    ejercicioCard: {
+        backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 20,
+        marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#2563eb10',
+    },
+    ejercicioCardCompleto: { borderColor: '#16a34a30', opacity: 0.75 },
+    ejercicioContenido: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+    ejercicioImagen: { width: 70, height: 70, borderRadius: 10, marginRight: 12, backgroundColor: '#0a0a1a' },
+    ejercicioImagenPlaceholder: {
+        width: 70, height: 70, borderRadius: 10, marginRight: 12,
+        backgroundColor: '#0d0d20', justifyContent: 'center', alignItems: 'center',
+    },
+    ejercicioImagenEmoji: { fontSize: 28 },
+    ejercicioInfo: { flex: 1 },
+    ejercicioNombre: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 8 },
+    textoTachado: { textDecorationLine: 'line-through', color: '#555' },
+    ejercicioStats: { flexDirection: 'row', flexWrap: 'wrap' },
+    statChip: {
+        backgroundColor: '#0d0d25', borderRadius: 8,
+        paddingVertical: 4, paddingHorizontal: 8, marginRight: 6, marginBottom: 4,
+        flexDirection: 'row', alignItems: 'center',
+    },
+    statValor: { color: '#2563eb', fontSize: 13, fontWeight: '800', marginRight: 3 },
+    statLabel: { color: '#555', fontSize: 11 },
+    ejercicioDescripcion: { color: '#555', fontSize: 11, marginTop: 4, lineHeight: 16 },
+    checkbox: {
+        width: 32, height: 32, borderRadius: 16, borderWidth: 2,
+        borderColor: '#2563eb40', justifyContent: 'center', alignItems: 'center', marginLeft: 8,
+    },
+    checkboxActivo: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+    checkboxTexto: { color: '#fff', fontSize: 16, fontWeight: '900' },
+    vacio: { alignItems: 'center', paddingHorizontal: 40, paddingTop: 60 },
+    vacioIcono: { fontSize: 50, marginBottom: 16 },
+    vacioTitulo: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+    vacioTexto: { color: '#555', fontSize: 14, textAlign: 'center', lineHeight: 22 },
 });
